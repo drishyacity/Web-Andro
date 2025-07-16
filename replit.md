@@ -6,6 +6,8 @@ This is a full-stack web application for converting websites and web files into 
 
 **Recent Update**: Migrated from Replit Agent to Replit environment with enhanced security and robustness. Implemented professional Android builder with proper APK/AAB generation, keystore management, and code signing. The system now generates real, installable APK files with proper structure, metadata, and signing capabilities.
 
+**Latest Enhancement (Jan 2025)**: Upgraded to CompleteAndroidBuilder with full Android project structure generation, including gradle build system, proper keystore generation with configurable validity periods (30 days to 100 years), real-time progress tracking, and complete package delivery with APK, AAB, and keystore files. Added comprehensive developer information fields and professional signing configuration.
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.

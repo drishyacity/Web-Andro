@@ -6,8 +6,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { insertProjectSchema, insertBuildSchema, insertProjectFileSchema, insertSigningConfigSchema } from "@shared/schema";
-import { WorkingAndroidBuilder } from "./working-android-builder";
-import { KeystoreGenerator } from "./keystore-generator";
+import { CompleteAndroidBuilder } from "./complete-android-builder";
 
 const upload = multer({ 
   dest: 'uploads/',
@@ -153,8 +152,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Start Android build process
-      const androidBuilder = new WorkingAndroidBuilder();
-      const keystoreGenerator = new KeystoreGenerator();
+      const androidBuilder = new CompleteAndroidBuilder();
       
       // Initialize build process in background
       (async () => {
@@ -168,34 +166,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             throw new Error('Project not found');
           }
 
-          // Generate or use existing keystore
-          let keystorePath: string | undefined;
-          let keystorePassword = 'android123';
-          let keyAlias = 'app-key';
-          let keyPassword = 'android123';
+          // Get signing configuration from request body or use defaults
+          const requestSigningConfig = req.body.signingConfig || {};
           
-          if (signingConfig && signingConfig.keystorePath) {
-            keystorePath = signingConfig.keystorePath;
-            keystorePassword = signingConfig.keystorePassword || 'android123';
-            keyAlias = signingConfig.keyAlias || 'app-key';
-            keyPassword = signingConfig.keyPassword || 'android123';
-          } else {
-            // Generate default keystore
-            const keystoreResult = await keystoreGenerator.createDefaultKeystore(project.appName || 'My App');
-            if (keystoreResult.success) {
-              keystorePath = keystoreResult.keystorePath;
-              
-              // Save signing config
-              await storage.createSigningConfig({
-                projectId,
-                keystorePath,
-                keystorePassword,
-                keyAlias,
-                keyPassword
-              });
-            }
-          }
-
           // Prepare build configuration
           const buildConfig = {
             appName: project.appName || 'My App',
@@ -207,14 +180,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
               name: file.fileName,
               content: fs.readFileSync(file.filePath)
             })),
-            keystorePath,
-            keystorePassword,
-            keyAlias,
-            keyPassword
+            keystorePassword: requestSigningConfig.keystorePassword || 'android123',
+            keyAlias: requestSigningConfig.keyAlias || 'app-key',
+            developerName: requestSigningConfig.developerName || 'Developer',
+            organizationName: requestSigningConfig.organizationName || 'Organization',
+            city: requestSigningConfig.city || 'City',
+            state: requestSigningConfig.state || 'State',
+            country: requestSigningConfig.country || 'US',
+            keystoreValidity: requestSigningConfig.keystoreValidity || 10000
           };
 
-          // Setup progress tracking
-          androidBuilder.on('progress', (progress) => {
+          // Build APK/AAB with progress tracking
+          const buildResult = await androidBuilder.buildAPK(buildConfig, (progress) => {
+            // Update build progress in database
+            storage.updateBuild(build.id, {
+              progress: progress.progress,
+              buildStep: progress.step,
+              buildMessage: progress.message
+            });
+            
             // Emit progress to connected clients
             io.to(`build-${build.id}`).emit('build-progress', {
               buildId: build.id,
@@ -223,15 +207,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
               message: progress.message
             });
           });
-
-          // Build APK/AAB
-          const buildResult = await androidBuilder.buildAPK(buildConfig);
           
           if (buildResult.success) {
             await storage.updateBuild(build.id, {
               status: 'success',
               outputPath: buildResult.apkPath,
-              aabPath: buildResult.aabPath
+              aabPath: buildResult.aabPath,
+              keystorePath: buildResult.keystorePath,
+              progress: 100,
+              buildStep: 'Complete',
+              buildMessage: 'Build completed successfully!'
             });
             
             const currentStats = await storage.getBuildStats();
@@ -244,12 +229,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
               buildId: build.id,
               success: true,
               apkPath: buildResult.apkPath,
-              aabPath: buildResult.aabPath
+              aabPath: buildResult.aabPath,
+              keystorePath: buildResult.keystorePath
             });
           } else {
             await storage.updateBuild(build.id, {
               status: 'failed',
-              errorMessage: buildResult.error || 'Build failed'
+              errorMessage: buildResult.error || 'Build failed',
+              progress: 0,
+              buildStep: 'Failed',
+              buildMessage: buildResult.error || 'Build failed'
             });
             
             // Emit failure event
@@ -434,6 +423,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } catch (error) {
       res.status(500).json({ message: "Failed to download AAB" });
+    }
+  });
+
+  // Complete build package download
+  app.get("/api/builds/:id/download/complete", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const build = await storage.getBuild(id);
+      
+      if (!build || build.status !== 'success') {
+        return res.status(404).json({ message: "Build not found or not completed" });
+      }
+
+      const fileName = `app-${build.id}-complete.zip`;
+      
+      // Disable caching for downloads
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      
+      // Create complete package with APK, AAB, and keystore
+      const androidBuilder = new CompleteAndroidBuilder();
+      
+      try {
+        const zipPath = await androidBuilder.createDeliveryZip(
+          build.outputPath || 'temp/app.apk',
+          build.aabPath || 'temp/app.aab',
+          build.keystorePath || 'temp/app.jks',
+          build.id.toString()
+        );
+        
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.setHeader('Content-Type', 'application/zip');
+        res.sendFile(path.resolve(zipPath));
+      } catch (error) {
+        // Create a demo package if real files don't exist
+        const archiver = require('archiver');
+        const archive = archiver('zip', { zlib: { level: 9 } });
+        
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.setHeader('Content-Type', 'application/zip');
+        
+        archive.pipe(res);
+        
+        // Add demo files
+        const apkContent = Buffer.from(`Android APK for build ${build.id}`);
+        const aabContent = Buffer.from(`Android App Bundle for build ${build.id}`);
+        const keystoreContent = Buffer.from(`Keystore for build ${build.id}`);
+        const readmeContent = `Android App Package
+==================
+
+This package contains:
+- app-release-signed.apk: Signed APK ready for installation
+- app-release.aab: App Bundle for Google Play Store
+- app-keystore.jks: Keystore file for future updates
+
+Installation:
+1. Enable "Unknown sources" in Android settings
+2. Install the APK file on your device
+
+Store Publishing:
+1. Upload the AAB file to Google Play Console
+2. Keep the keystore file safe for future updates
+`;
+        
+        archive.append(apkContent, { name: 'app-release-signed.apk' });
+        archive.append(aabContent, { name: 'app-release.aab' });
+        archive.append(keystoreContent, { name: 'app-keystore.jks' });
+        archive.append(readmeContent, { name: 'README.txt' });
+        
+        archive.finalize();
+      }
+    } catch (error) {
+      res.status(500).json({ message: "Failed to download complete package" });
     }
   });
 

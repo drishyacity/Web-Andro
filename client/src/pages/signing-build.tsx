@@ -20,14 +20,21 @@ export default function SigningBuild() {
   const { toast } = useToast();
   
   const [buildType, setBuildType] = useState<"apk" | "aab">("apk");
-  const [keystorePath, setKeystorePath] = useState("");
   const [keystorePassword, setKeystorePassword] = useState("");
   const [keyAlias, setKeyAlias] = useState("");
   const [keyPassword, setKeyPassword] = useState("");
+  const [developerName, setDeveloperName] = useState("");
+  const [organizationName, setOrganizationName] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [country, setCountry] = useState("US");
+  const [keystoreValidity, setKeystoreValidity] = useState(10000); // Default 10000 days
   const [enableOptimization, setEnableOptimization] = useState(true);
   const [enableObfuscation, setEnableObfuscation] = useState(false);
   const [isBuilding, setIsBuilding] = useState(false);
   const [buildProgress, setBuildProgress] = useState(0);
+  const [buildStep, setBuildStep] = useState("");
+  const [buildMessage, setBuildMessage] = useState("");
   const [currentBuild, setCurrentBuild] = useState<BuildType | null>(null);
 
   const { data: project, isLoading } = useQuery<Project>({
@@ -56,8 +63,21 @@ export default function SigningBuild() {
           const response = await apiRequest("GET", `/api/builds/${build.id}`);
           const updatedBuild = await response.json();
           
+          // Update progress information
+          if (updatedBuild.progress !== undefined) {
+            setBuildProgress(updatedBuild.progress);
+          }
+          if (updatedBuild.buildStep) {
+            setBuildStep(updatedBuild.buildStep);
+          }
+          if (updatedBuild.buildMessage) {
+            setBuildMessage(updatedBuild.buildMessage);
+          }
+          
           if (updatedBuild.status === 'success') {
             setBuildProgress(100);
+            setBuildStep('Complete');
+            setBuildMessage('Build completed successfully!');
             setIsBuilding(false);
             toast({
               title: "Build Complete",
@@ -69,14 +89,14 @@ export default function SigningBuild() {
           } else if (updatedBuild.status === 'failed') {
             setIsBuilding(false);
             setBuildProgress(0);
+            setBuildStep('Failed');
+            setBuildMessage(updatedBuild.errorMessage || "Build failed with unknown error");
             toast({
               title: "Build Failed",
               description: updatedBuild.errorMessage || "Build failed with unknown error",
               variant: "destructive",
             });
           } else {
-            // Update progress based on build status
-            setBuildProgress(updatedBuild.status === 'building' ? 50 : 10);
             // Continue polling
             setTimeout(pollBuildStatus, 2000);
           }
@@ -109,10 +129,10 @@ export default function SigningBuild() {
   });
 
   const handleBuild = () => {
-    if (!keystorePassword || !keyAlias || !keyPassword) {
+    if (!keystorePassword || !keyAlias || !keyPassword || !developerName) {
       toast({
         title: "Error",
-        description: "Please fill in all signing configuration fields",
+        description: "Please fill in all required signing configuration fields",
         variant: "destructive",
       });
       return;
@@ -120,10 +140,15 @@ export default function SigningBuild() {
 
     // Save signing config first
     const configData = {
-      keystorePath: keystorePath || "Generated automatically",
       keystorePassword,
       keyAlias,
       keyPassword,
+      developerName,
+      organizationName,
+      city,
+      state,
+      country,
+      keystoreValidity,
     };
 
     saveSigningConfigMutation.mutate(configData);
@@ -132,6 +157,7 @@ export default function SigningBuild() {
     const buildData = {
       buildType,
       status: 'building',
+      signingConfig: configData,
     };
 
     createBuildMutation.mutate(buildData);
@@ -265,14 +291,76 @@ export default function SigningBuild() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="developer-name">Developer Name</Label>
+                  <Label htmlFor="developer-name">Developer Name *</Label>
                   <Input
                     id="developer-name"
-                    value={keystorePath}
-                    onChange={(e) => setKeystorePath(e.target.value)}
+                    value={developerName}
+                    onChange={(e) => setDeveloperName(e.target.value)}
                     placeholder="Your name or company"
                   />
                 </div>
+                <div>
+                  <Label htmlFor="organization-name">Organization Name</Label>
+                  <Input
+                    id="organization-name"
+                    value={organizationName}
+                    onChange={(e) => setOrganizationName(e.target.value)}
+                    placeholder="Your organization"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="city">City</Label>
+                  <Input
+                    id="city"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    placeholder="Your city"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="state">State/Province</Label>
+                  <Input
+                    id="state"
+                    value={state}
+                    onChange={(e) => setState(e.target.value)}
+                    placeholder="Your state"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="country">Country</Label>
+                  <Input
+                    id="country"
+                    value={country}
+                    onChange={(e) => setCountry(e.target.value)}
+                    placeholder="US"
+                  />
+                </div>
+              </div>
+              
+              <div className="mt-4">
+                <Label htmlFor="keystore-validity">Keystore Validity Period</Label>
+                <RadioGroup value={keystoreValidity.toString()} onValueChange={(value) => setKeystoreValidity(parseInt(value))}>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="30" id="30-days" />
+                    <Label htmlFor="30-days">30 days (Testing)</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="365" id="1-year" />
+                    <Label htmlFor="1-year">1 year</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="3650" id="10-years" />
+                    <Label htmlFor="10-years">10 years</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="10000" id="27-years" />
+                    <Label htmlFor="27-years">27 years (Recommended)</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="36500" id="100-years" />
+                    <Label htmlFor="100-years">100 years</Label>
+                  </div>
+                </RadioGroup>
               </div>
               
               <div className="p-4 bg-blue-50 rounded-lg">
@@ -323,9 +411,16 @@ export default function SigningBuild() {
                 <div className="space-y-4">
                   <Progress value={buildProgress} className="w-full" />
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Building your app...</span>
+                    <span className="text-sm text-gray-600">
+                      {buildStep ? `${buildStep}: ${buildMessage}` : "Building your app..."}
+                    </span>
                     <span className="text-sm font-medium">{buildProgress}%</span>
                   </div>
+                  {buildStep && (
+                    <div className="text-xs text-gray-500 mt-2">
+                      Current step: {buildStep}
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

@@ -34,7 +34,11 @@ export const builds = pgTable("builds", {
   buildType: text("build_type").notNull(), // 'apk' or 'aab'
   outputPath: text("output_path"),
   aabPath: text("aab_path"),
+  keystorePath: text("keystore_path"),
   errorMessage: text("error_message"),
+  progress: integer("progress").default(0),
+  buildStep: text("build_step"),
+  buildMessage: text("build_message"),
   startedAt: timestamp("started_at").defaultNow(),
   completedAt: timestamp("completed_at"),
 });
@@ -52,10 +56,16 @@ export const projectFiles = pgTable("project_files", {
 export const signingConfigs = pgTable("signing_configs", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").references(() => projects.id).notNull(),
-  keystorePath: text("keystore_path").notNull(),
+  keystorePath: text("keystore_path"),
   keystorePassword: text("keystore_password").notNull(),
   keyAlias: text("key_alias").notNull(),
   keyPassword: text("key_password").notNull(),
+  developerName: text("developer_name"),
+  organizationName: text("organization_name"),
+  city: text("city"),
+  state: text("state"),
+  country: text("country"),
+  keystoreValidity: integer("keystore_validity").default(10000),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

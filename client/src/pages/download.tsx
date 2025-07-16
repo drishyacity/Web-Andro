@@ -29,7 +29,7 @@ export default function Download() {
 
   const { progress, isComplete, result } = useBuildProgress(buildId || null);
 
-  const handleDownload = async (fileType: 'apk' | 'aab') => {
+  const handleDownload = async (fileType: 'apk' | 'aab' | 'complete') => {
     if (!build || build.status !== 'success') return;
 
     try {
@@ -43,7 +43,7 @@ export default function Download() {
       const disposition = response.headers.get('Content-Disposition');
       const filename = disposition 
         ? disposition.split('filename=')[1]?.replace(/"/g, '') 
-        : `app-${build.id}.${fileType}`;
+        : `app-${build.id}.${fileType === 'complete' ? 'zip' : fileType}`;
 
       // Convert response to blob and create download
       const blob = await response.blob();
@@ -61,12 +61,12 @@ export default function Download() {
       
       toast({
         title: "Success",
-        description: `${fileType.toUpperCase()} download started successfully`,
+        description: `${fileType === 'complete' ? 'Complete package' : fileType.toUpperCase()} download started successfully`,
       });
     } catch (error) {
       toast({
         title: "Error",
-        description: `Failed to download ${fileType.toUpperCase()}`,
+        description: `Failed to download ${fileType === 'complete' ? 'complete package' : fileType.toUpperCase()}`,
         variant: "destructive",
       });
     }
@@ -300,7 +300,7 @@ export default function Download() {
                     </div>
                   </div>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <Button 
                       onClick={() => handleDownload('apk')} 
                       className="flex items-center justify-center h-12"
@@ -319,6 +319,16 @@ export default function Download() {
                       <Bolt className="h-5 w-5 mr-2" />
                       Download AAB
                       <span className="ml-2 text-xs opacity-75">(Play Store)</span>
+                    </Button>
+                    
+                    <Button 
+                      onClick={() => handleDownload('complete')} 
+                      className="flex items-center justify-center h-12"
+                      variant="secondary"
+                    >
+                      <DownloadIcon className="h-5 w-5 mr-2" />
+                      Complete Package
+                      <span className="ml-2 text-xs opacity-75">(APK + AAB + Keystore)</span>
                     </Button>
                   </div>
                   
