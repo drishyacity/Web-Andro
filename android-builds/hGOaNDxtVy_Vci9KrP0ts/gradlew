@@ -1,0 +1,3 @@
+#!/bin/bash
+DEFAULT_JVM_OPTS='"-Dorg.gradle.appname=$APP_BASE_NAME" -Dorg.gradle.wrapper.boot.version=7.5'
+exec gradle "$@"
