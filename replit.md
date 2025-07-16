@@ -4,7 +4,7 @@
 
 This is a full-stack web application for converting websites and web files into Android APK/AAB packages. The application allows users to input either a website URL or upload web files, configure app settings, handle code signing, and build Android packages. Built with React/TypeScript frontend, Express.js backend, and PostgreSQL database using Drizzle ORM. 
 
-**Recent Update**: Implemented template-based Android builder that generates real, installable APK files using pre-built Android project templates with proper structure and configuration.
+**Recent Update**: Migrated from Replit Agent to Replit environment with enhanced security and robustness. Implemented professional Android builder with proper APK/AAB generation, keystore management, and code signing. The system now generates real, installable APK files with proper structure, metadata, and signing capabilities.
 
 ## User Preferences
 

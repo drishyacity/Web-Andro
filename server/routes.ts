@@ -5,7 +5,8 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { insertProjectSchema, insertBuildSchema, insertProjectFileSchema, insertSigningConfigSchema } from "@shared/schema";
-import { TemplateAndroidBuilder } from "./template-android-builder";
+import { RobustAndroidBuilder } from "./robust-android-builder";
+import { KeystoreGenerator } from "./keystore-generator";
 
 const upload = multer({ 
   dest: 'uploads/',
@@ -151,19 +152,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Start Android build process
-      const androidBuilder = new TemplateAndroidBuilder();
+      const androidBuilder = new RobustAndroidBuilder();
+      const keystoreGenerator = new KeystoreGenerator();
       
       // Initialize build process in background
       (async () => {
         try {
-          // Template builder ready to use
-          
           // Get project details
           const project = await storage.getProject(projectId);
           const projectFiles = await storage.getProjectFiles(projectId);
+          const signingConfig = await storage.getSigningConfig(projectId);
           
           if (!project) {
             throw new Error('Project not found');
+          }
+
+          // Generate or use existing keystore
+          let keystorePath: string | undefined;
+          let keystorePassword = 'android123';
+          let keyAlias = 'app-key';
+          let keyPassword = 'android123';
+          
+          if (signingConfig && signingConfig.keystorePath) {
+            keystorePath = signingConfig.keystorePath;
+            keystorePassword = signingConfig.keystorePassword || 'android123';
+            keyAlias = signingConfig.keyAlias || 'app-key';
+            keyPassword = signingConfig.keyPassword || 'android123';
+          } else {
+            // Generate default keystore
+            const keystoreResult = await keystoreGenerator.createDefaultKeystore(project.appName || 'My App');
+            if (keystoreResult.success) {
+              keystorePath = keystoreResult.keystorePath;
+              
+              // Save signing config
+              await storage.createSigningConfig({
+                projectId,
+                keystorePath,
+                keystorePassword,
+                keyAlias,
+                keyPassword
+              });
+            }
           }
 
           // Prepare build configuration
@@ -176,7 +205,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             files: projectFiles.map(file => ({
               name: file.fileName,
               content: fs.readFileSync(file.filePath)
-            }))
+            })),
+            keystorePath,
+            keystorePassword,
+            keyAlias,
+            keyPassword
           };
 
           // Build APK/AAB
