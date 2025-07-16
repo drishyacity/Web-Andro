@@ -1,11 +1,12 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { Server as SocketIOServer } from "socket.io";
 import { storage } from "./storage";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { insertProjectSchema, insertBuildSchema, insertProjectFileSchema, insertSigningConfigSchema } from "@shared/schema";
-import { RobustAndroidBuilder } from "./robust-android-builder";
+import { WorkingAndroidBuilder } from "./working-android-builder";
 import { KeystoreGenerator } from "./keystore-generator";
 
 const upload = multer({ 
@@ -152,7 +153,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Start Android build process
-      const androidBuilder = new RobustAndroidBuilder();
+      const androidBuilder = new WorkingAndroidBuilder();
       const keystoreGenerator = new KeystoreGenerator();
       
       // Initialize build process in background
@@ -212,6 +213,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
             keyPassword
           };
 
+          // Setup progress tracking
+          androidBuilder.on('progress', (progress) => {
+            // Emit progress to connected clients
+            io.to(`build-${build.id}`).emit('build-progress', {
+              buildId: build.id,
+              step: progress.step,
+              progress: progress.progress,
+              message: progress.message
+            });
+          });
+
           // Build APK/AAB
           const buildResult = await androidBuilder.buildAPK(buildConfig);
           
@@ -226,16 +238,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
             await storage.updateBuildStats({
               successfulBuilds: currentStats.successfulBuilds + 1
             });
+            
+            // Emit success event
+            io.to(`build-${build.id}`).emit('build-complete', {
+              buildId: build.id,
+              success: true,
+              apkPath: buildResult.apkPath,
+              aabPath: buildResult.aabPath
+            });
           } else {
             await storage.updateBuild(build.id, {
               status: 'failed',
               errorMessage: buildResult.error || 'Build failed'
+            });
+            
+            // Emit failure event
+            io.to(`build-${build.id}`).emit('build-complete', {
+              buildId: build.id,
+              success: false,
+              error: buildResult.error || 'Build failed'
             });
           }
         } catch (error) {
           await storage.updateBuild(build.id, {
             status: 'failed',
             errorMessage: error instanceof Error ? error.message : 'Unknown build error'
+          });
+          
+          // Emit failure event
+          io.to(`build-${build.id}`).emit('build-complete', {
+            buildId: build.id,
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown build error'
           });
         }
       })();
@@ -404,5 +438,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const httpServer = createServer(app);
+  
+  // Setup Socket.IO for real-time build progress
+  const io = new SocketIOServer(httpServer, {
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"]
+    }
+  });
+  
+  // Store socket connections by build ID
+  const buildSockets = new Map<string, any>();
+  
+  io.on('connection', (socket) => {
+    console.log('Client connected for build updates');
+    
+    socket.on('join-build', (buildId: string) => {
+      buildSockets.set(buildId, socket);
+      socket.join(`build-${buildId}`);
+    });
+    
+    socket.on('disconnect', () => {
+      console.log('Client disconnected');
+    });
+  });
+  
   return httpServer;
 }

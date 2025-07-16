@@ -1,0 +1,4 @@
+Manifest-Version: 1.0
+Created-By: WebApp to APK Converter
+Package: com.snakebite.virajproductions
+Application-Name: Snake Bite

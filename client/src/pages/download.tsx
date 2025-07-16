@@ -3,10 +3,12 @@ import { useLocation, useParams } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Smartphone, Download as DownloadIcon, CheckCircle, XCircle, Clock, FileText, Bolt, ChevronLeft, Settings, HelpCircle } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { Smartphone, Download as DownloadIcon, CheckCircle, XCircle, Clock, FileText, Bolt, ChevronLeft, Settings, HelpCircle, Loader2 } from "lucide-react";
 import { ProgressSteps } from "@/components/progress-steps";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useBuildProgress } from "@/hooks/use-build-progress";
 import type { Build as BuildType, Project } from "@shared/schema";
 
 export default function Download() {
@@ -17,12 +19,15 @@ export default function Download() {
   const { data: build, isLoading } = useQuery<BuildType>({
     queryKey: ["/api/builds", buildId],
     enabled: !!buildId,
+    refetchInterval: (data) => data?.status === 'building' ? 1000 : false,
   });
 
   const { data: project } = useQuery<Project>({
     queryKey: ["/api/projects", build?.projectId],
     enabled: !!build?.projectId,
   });
+
+  const { progress, isComplete, result } = useBuildProgress(buildId || null);
 
   const handleDownload = async (fileType: 'apk' | 'aab') => {
     if (!build || build.status !== 'success') return;
@@ -203,6 +208,47 @@ export default function Download() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Real-time Build Progress */}
+          {(build.status === 'building' || progress) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                  Build Progress
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {progress && (
+                    <>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium text-gray-700">
+                          {progress.step.charAt(0).toUpperCase() + progress.step.slice(1)}
+                        </span>
+                        <span className="text-sm text-gray-500">
+                          {progress.progress}%
+                        </span>
+                      </div>
+                      <Progress value={progress.progress} className="w-full" />
+                      <p className="text-sm text-gray-600 mt-2">
+                        {progress.message}
+                      </p>
+                    </>
+                  )}
+                  
+                  {!progress && build.status === 'building' && (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
+                      <span className="text-sm text-gray-600">
+                        Initializing build process...
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Project Information */}
           {project && (
