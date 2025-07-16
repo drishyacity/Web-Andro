@@ -6,7 +6,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { insertProjectSchema, insertBuildSchema, insertProjectFileSchema, insertSigningConfigSchema } from "@shared/schema";
-import { CompleteAndroidBuilder } from "./complete-android-builder";
+import { ProfessionalAndroidBuildSystem } from "./professional-android-build-system";
 
 const upload = multer({ 
   dest: 'uploads/',
@@ -152,7 +152,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Start Android build process
-      const androidBuilder = new CompleteAndroidBuilder();
+      const androidBuilder = new ProfessionalAndroidBuildSystem();
       
       // Initialize build process in background
       (async () => {
@@ -444,7 +444,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.setHeader('Expires', '0');
       
       // Create complete package with APK, AAB, and keystore
-      const androidBuilder = new CompleteAndroidBuilder();
+      const androidBuilder = new ProfessionalAndroidBuildSystem();
       
       try {
         const zipPath = await androidBuilder.createDeliveryZip(
