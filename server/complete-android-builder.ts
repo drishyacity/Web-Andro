@@ -491,7 +491,7 @@ exec gradle "$@"
 
   private async createMinimalAPK(projectDir: string, apkPath: string): Promise<void> {
     const archiver = (await import('archiver')).default;
-    const fs = require('fs');
+    const fs = await import('fs');
     
     return new Promise((resolve, reject) => {
       const output = fs.createWriteStream(apkPath);
@@ -568,7 +568,7 @@ exec gradle "$@"
 
   private async createMinimalAAB(projectDir: string, aabPath: string): Promise<void> {
     const archiver = (await import('archiver')).default;
-    const fs = require('fs');
+    const fs = await import('fs');
     
     return new Promise((resolve, reject) => {
       const output = fs.createWriteStream(aabPath);
